@@ -1,0 +1,83 @@
+#!/bin/env python
+#-*- coding:utf-8 -*-
+
+import Queue
+import requests
+import re
+import threading
+
+
+
+url_queue=Queue.Queue()
+threads_num=50
+file_queue=Queue.Queue()
+
+headers={"User-Agent": "Mozilla/5.0 (Windows NT 6.3; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0"}
+
+def init_file(filename):
+    ip_list = []
+    with open(filename,"r") as f:
+        for line in f.readlines():
+            ip = line.strip()
+            ip_list.append(ip)
+    return ip_list
+
+def init(filename):
+        ip_list=init_file(filename)
+        for port in port_list:
+            port=str(port)
+            for ip in ip_list:
+                if "443" in port:
+                    url="https://"+ip+":"+port
+                else:
+                    url="http://"+ip+":"+port
+                url_queue.put(url)
+
+def scan():
+    while True:
+        try:
+            url=url_queue.get(block=False)
+        except:
+            break
+        try:
+            r = requests.get(url, timeout=3, headers=headers, verify=False)
+            status_code = r.status_code
+            response_url = r.url
+            html_text = r.content
+            title = re.search(r'<title>(.*)</title>', r.content)  # get the title
+            if title:
+                title = title.group(1).strip().strip("\r").strip("\n")[:30]
+            else:
+                title = "None"
+            server, language = "", ""
+            for header in r.headers:
+                if header == "Server":
+                    server = r.headers[header]
+                if "X-Powered-By" == header:
+                    language = r.headers[header]
+            file_queue.put(url+"\t"+str(status_code)+"\t"+title)
+            print url+"\t"+str(status_code)+"\t"+title
+        except:
+            pass
+        finally:
+            url_queue.task_done()
+def run(filename):
+    init(filename)
+    thread_list=[]
+    for i in range(threads_num):
+        t = threading.Thread(target=scan)
+        thread_list.append(t)
+        t.start()
+    for t in thread_list:
+        t.join()
+    with open("httptitle.txt","w") as f:
+        while True:
+            try:
+                line=file_queue.get(block=False)
+            except:
+                break
+            f.write(line+"\n")
+
+if __name__=="__main__":
+    port_list = [80, 8081, 443]
+    run("1.ip.txt")
